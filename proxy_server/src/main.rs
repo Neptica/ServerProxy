@@ -1,7 +1,8 @@
 mod route;
 
 use actix_web::{middleware::Logger, web::Data, App, HttpServer};
-use route::routes::{clear_cache, test as list_pokemon};
+use route::routes::{clear_cache, fetch_data};
+use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -10,11 +11,7 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
 
-    let mut cache: HashMap<String, String> = HashMap::new();
-    cache.insert(
-        String::from("Test"),
-        String::from("This might be working Chat."),
-    );
+    let mut cache: HashMap<String, Value> = HashMap::new();
     let sql_repo = Arc::new(Mutex::new(cache));
     let sql_data = Data::new(sql_repo);
 
@@ -25,7 +22,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(logger)
             .app_data(sql_data.clone())
-            .service(list_pokemon)
+            .service(fetch_data)
             .service(clear_cache)
     })
     .bind(("127.0.0.1", 3000))?

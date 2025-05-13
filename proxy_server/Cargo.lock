@@ -1189,7 +1189,10 @@ name = "proxy_server"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "derive_more",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

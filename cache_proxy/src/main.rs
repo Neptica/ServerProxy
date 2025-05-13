@@ -1,6 +1,7 @@
 use clap::Parser;
-use reqwest::{blocking::Client, Error};
-use std::{net::TcpStream, process::Command, process::Stdio};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::{to_value, Value};
 
 #[derive(Parser)]
 struct Cli {
@@ -14,17 +15,18 @@ struct Cli {
     clear_cache: bool,
 }
 
-fn fetch(url: String) -> Result<String, Error> {
-    reqwest::blocking::get(url)?.text()
+#[derive(Serialize, Deserialize)]
+struct CacheData {
+    cache_response: String,
+    data: Value,
 }
 
 fn main() {
     let args = Cli::parse();
+    let client = Client::new();
 
     if args.clear_cache {
-        let res = Client::new()
-            .delete("http://localhost:3000/clear-cache")
-            .send();
+        let res = client.delete("http://localhost:3000/clear-cache").send();
 
         match res {
             Ok(response) => {
@@ -38,10 +40,26 @@ fn main() {
         }
     } else {
         match args.origin {
-            Some(origin) => match fetch(origin) {
-                Ok(req) => println!("{}", req),
-                Err(e) => println!("{}", e),
-            },
+            Some(origin) => {
+                // Skip async/await because this
+                let res = client
+                    .put(format!("http://localhost:{}/", args.port.clone().unwrap()))
+                    .header("Content-Type", "text/plain")
+                    .body(origin.clone())
+                    .send();
+                match res {
+                    Ok(response) => {
+                        let stringified_json = response.text().unwrap_or(String::from(""));
+                        let json_object: Value = serde_json::from_str(&stringified_json)
+                            .unwrap_or(Value::Object(Default::default()));
+                        // println!("{:#?}", json_object);
+                        println!("{}", json_object);
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                    }
+                }
+            }
             None => {
                 eprintln!("Error: --origin is required when --clear-cache is false.");
                 std::process::exit(1);

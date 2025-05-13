@@ -1,63 +1,125 @@
-use actix_web::{delete, get, web::Data, web::Path, Error, Responder};
+use actix_web::{
+    delete, http::header::ContentType, put, web::Data, web::Json, Error, HttpResponse, Responder,
+    ResponseError,
+};
+use derive_more::Display;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
+// pub enum TaskError {
+//     TaskNotFound,
+//     TaskUpdateFailure,
+//     TaskCreationFailure,
+//     BadTaskRequest,
+// }
+//
+// impl ResponseError for TaskError {
+//     fn error_response(&self) -> HttpResponse {
+//         HttpResponse::build(self.status_code())
+//             .insert_header(ContentType::json())
+//             .body(self.to_string())
+//     }
+//
+//     fn status_code(&self) -> StatusCode {
+//         match self {
+//             TaskError::TaskNotFound => StatusCode::NOT_FOUND,
+//             TaskError::TaskUpdateFailure => StatusCode::FAILED_DEPENDENCY,
+//             TaskError::TaskCreationFailure => StatusCode::FAILED_DEPENDENCY,
+//             TaskError::BadTaskRequest => StatusCode::BAD_REQUEST,
+//         }
+//     }
+// }
+
+#[derive(Serialize, Deserialize)]
+struct CacheData {
+    cache_response: String,
+    data: Value,
+}
+
+#[derive(Debug, Display)]
+struct ProxyError {
+    error: String,
+}
+
+impl ResponseError for ProxyError {
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code())
+            .insert_header(ContentType::json())
+            .body(self.to_string())
+    }
+}
+
 async fn fetch(
-    path: String,
-    cache_pool: Data<Arc<Mutex<HashMap<String, String>>>>,
-) -> Result<String, Error> {
+    origin: String,
+    cache_pool: Data<Arc<Mutex<HashMap<String, Value>>>>,
+) -> Result<CacheData, ProxyError> {
     let mut cache = cache_pool.lock().await;
-    if let Some(cached_response) = cache.get(&path) {
-        let response = format!("{}\n{}", "X-Cache: HIT", cached_response);
+    if let Some(cached_response) = cache.get(&origin) {
+        let response: CacheData = CacheData {
+            cache_response: String::from("X-cache: HIT"),
+            data: cached_response.clone(),
+        };
         Ok(response)
     } else {
-        let url = format!("{}{}", "https://pokeapi.co/api/v2/", path);
-        println!("URL: {}", url);
-        match reqwest::get(url).await {
+        println!("URL: {}", origin);
+        match reqwest::get(&origin).await {
             Ok(grabbed_response) => {
                 if grabbed_response.status().is_success() {
-                    match grabbed_response.text().await {
+                    match grabbed_response.json::<Value>().await {
                         Ok(parsed_body) => {
-                            if parsed_body.is_empty() {
-                                return Ok("Not a valid URL".to_string());
+                            if parsed_body.is_null() {
+                                return Err(ProxyError {
+                                    error: String::from("Invalid URL"),
+                                });
                             } else {
-                                cache.insert(path, parsed_body.clone());
-                                let response = format!("{}\n{}", "X-Cache: MISS", parsed_body);
+                                cache.insert(origin, parsed_body.clone());
+                                let response: CacheData = CacheData {
+                                    cache_response: String::from("X-cache: MISS"),
+                                    data: parsed_body,
+                                };
                                 return Ok(response);
                             }
                         }
                         Err(_) => {
-                            return Ok("Internal Server Error".to_string());
+                            return Err(ProxyError {
+                                error: String::from("Internal Server Error"),
+                            });
                         }
                     }
                 }
-                Ok(format!("Request failed: {}", grabbed_response.status()))
+                Err(ProxyError {
+                    error: format!("Request failed: {}", grabbed_response.status()),
+                })
             }
             Err(e) => {
                 println!("{}", e);
-                Ok("Internal Server Error: Unable to fetch data".to_string())
+                Err(ProxyError {
+                    error: String::from("Internal Server Error: Unable to fetch data"),
+                })
             }
         }
     }
 }
 
-#[get("/{tail:.*}")]
-pub async fn test(
-    cache_pool: Data<Arc<Mutex<HashMap<String, String>>>>,
-    tail: Path<String>,
-) -> Result<impl Responder, Error> {
-    // Normalize the URLs to deal with trailing slashes
-    let inner = tail.into_inner();
-    let un_path: &str = inner.as_str();
-    let path = un_path.strip_suffix('/').unwrap_or(un_path);
+#[put("/")]
+pub async fn fetch_data(
+    cache_pool: Data<Arc<Mutex<HashMap<String, Value>>>>,
+    un_req: String,
+) -> Result<Json<CacheData>, ProxyError> {
+    println!("Received request");
+    let req = un_req.strip_suffix('/').unwrap_or(&un_req);
 
-    fetch(String::from(path), cache_pool).await
-    // Ok(format!("{:?}", cache))
+    match fetch(String::from(req), cache_pool).await {
+        Ok(data) => Ok(Json(data)),
+        Err(e) => Err(e),
+    }
 }
 
 #[delete("/clear-cache")]
 pub async fn clear_cache(
-    cache_pool: Data<Arc<Mutex<HashMap<String, String>>>>,
+    cache_pool: Data<Arc<Mutex<HashMap<String, Value>>>>,
 ) -> Result<String, Error> {
     let mut cache = cache_pool.lock().await;
     cache.clear();
