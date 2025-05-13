@@ -1,5 +1,5 @@
 use actix_web::{
-    delete, http::header::ContentType, put, web::Data, web::Json, Error, HttpResponse, Responder,
+    delete, http::header::ContentType, put, web::Data, web::Json, Error, HttpResponse,
     ResponseError,
 };
 use derive_more::Display;
@@ -7,30 +7,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-
-// pub enum TaskError {
-//     TaskNotFound,
-//     TaskUpdateFailure,
-//     TaskCreationFailure,
-//     BadTaskRequest,
-// }
-//
-// impl ResponseError for TaskError {
-//     fn error_response(&self) -> HttpResponse {
-//         HttpResponse::build(self.status_code())
-//             .insert_header(ContentType::json())
-//             .body(self.to_string())
-//     }
-//
-//     fn status_code(&self) -> StatusCode {
-//         match self {
-//             TaskError::TaskNotFound => StatusCode::NOT_FOUND,
-//             TaskError::TaskUpdateFailure => StatusCode::FAILED_DEPENDENCY,
-//             TaskError::TaskCreationFailure => StatusCode::FAILED_DEPENDENCY,
-//             TaskError::BadTaskRequest => StatusCode::BAD_REQUEST,
-//         }
-//     }
-// }
 
 #[derive(Serialize, Deserialize)]
 struct CacheData {

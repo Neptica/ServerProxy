@@ -1,7 +1,7 @@
 use clap::Parser;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{to_value, Value};
+use serde_json::Value;
 
 #[derive(Parser)]
 struct Cli {

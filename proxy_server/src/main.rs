@@ -11,7 +11,7 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
 
-    let mut cache: HashMap<String, Value> = HashMap::new();
+    let cache: HashMap<String, Value> = HashMap::new();
     let sql_repo = Arc::new(Mutex::new(cache));
     let sql_data = Data::new(sql_repo);
 
