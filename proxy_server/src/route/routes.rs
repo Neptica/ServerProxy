@@ -1,5 +1,5 @@
 use actix_web::{
-    delete, http::header::ContentType, put, web::Data, web::Json, Error, HttpResponse,
+    delete, http::header, http::header::ContentType, put, web::Data, Error, HttpResponse,
     ResponseError,
 };
 use derive_more::Display;
@@ -27,17 +27,19 @@ impl ResponseError for ProxyError {
     }
 }
 
+// HttpResponse::Ok()
+//     .insert_header((header::HeaderName::from_static("x-cache"), cache_info))
+//     .json(data)
+
 async fn fetch(
     origin: String,
     cache_pool: Data<Arc<Mutex<HashMap<String, Value>>>>,
-) -> Result<CacheData, ProxyError> {
+) -> Result<HttpResponse, ProxyError> {
     let mut cache = cache_pool.lock().await;
     if let Some(cached_response) = cache.get(&origin) {
-        let response: CacheData = CacheData {
-            cache_response: String::from("X-cache: HIT"),
-            data: cached_response.clone(),
-        };
-        Ok(response)
+        Ok(HttpResponse::Ok()
+            .insert_header((header::HeaderName::from_static("x-cache"), "HIT"))
+            .json(cached_response.clone()))
     } else {
         println!("URL: {}", origin);
         match reqwest::get(&origin).await {
@@ -51,11 +53,12 @@ async fn fetch(
                                 });
                             } else {
                                 cache.insert(origin, parsed_body.clone());
-                                let response: CacheData = CacheData {
-                                    cache_response: String::from("X-cache: MISS"),
-                                    data: parsed_body,
-                                };
-                                return Ok(response);
+                                return Ok(HttpResponse::Ok()
+                                    .insert_header((
+                                        header::HeaderName::from_static("x-cache"),
+                                        "MISS",
+                                    ))
+                                    .json(parsed_body.clone()));
                             }
                         }
                         Err(_) => {
@@ -83,14 +86,11 @@ async fn fetch(
 pub async fn fetch_data(
     cache_pool: Data<Arc<Mutex<HashMap<String, Value>>>>,
     un_req: String,
-) -> Result<Json<CacheData>, ProxyError> {
+) -> Result<HttpResponse, ProxyError> {
     println!("Received request");
     let req = un_req.strip_suffix('/').unwrap_or(&un_req);
 
-    match fetch(String::from(req), cache_pool).await {
-        Ok(data) => Ok(Json(data)),
-        Err(e) => Err(e),
-    }
+    fetch(String::from(req), cache_pool).await
 }
 
 #[delete("/clear-cache")]

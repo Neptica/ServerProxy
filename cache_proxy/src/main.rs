@@ -49,11 +49,19 @@ fn main() {
                     .send();
                 match res {
                     Ok(response) => {
+                        let result = response
+                            .headers()
+                            .get("x-cache")
+                            .map(|val| val.to_str().unwrap_or("").to_string());
+
                         let stringified_json = response.text().unwrap_or(String::from(""));
                         let json_object: Value = serde_json::from_str(&stringified_json)
                             .unwrap_or(Value::Object(Default::default()));
-                        // println!("{:#?}", json_object);
-                        println!("{}", json_object);
+
+                        if let Some(cache_header) = result {
+                            // println!("X-Cache: {}\n\n{:#?}", cache_header, json_object);
+                            println!("X-Cache: {}\n\n{}", cache_header, json_object);
+                        }
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e);
